@@ -1,0 +1,58 @@
+﻿@page "/chat"
+@inject NavigationManager NavigationManager
+@rendermode InteractiveWebAssembly
+<h3>Chat</h3>
+
+@if (IsConnected)
+{
+    <div class="container">
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <input class="form-control mt-3" type="text" placeholder="User" @bind="userInput" />
+                <input class="form-control mt-3" type="text" placeholder="Message" @bind="messageInput" />
+                <div class="d-flex justify-content-center mt-3">
+                    <button class="btn btn-primary btn-block" @onclick="Send">Send</button>
+                </div>
+
+                <ul class="list-group mt-3 d-flex flex-column-reverse">
+                    @foreach (var message in messages)
+                    {
+                        <li class="list-group-item">@message</li>
+                    }
+                </ul>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <span>Connecting...</span>
+}
+
+@code {
+    private HubConnection hubconnection;
+    private List<string> messages = new List<string>();
+    private string userInput;
+    private string messageInput;
+
+    protected override async Task OnInitializedAsync()
+    {
+        hubconnection = new HubConnectionBuilder()
+            .WithUrl(NavigationManager.ToAbsoluteUri("/chatHub"))
+            .Build();
+
+        hubconnection.On<string, string>("ReceiveMessage", (user, message) =>
+        {
+            var formattedMessage = $"{user}: {message}";
+            messages.Add(formattedMessage);
+            StateHasChanged();
+        });
+
+        await hubconnection.StartAsync();
+    }
+
+    Task Send() => hubconnection.SendAsync("SendMessage", userInput, messageInput);
+
+    public bool IsConnected => hubconnection.State == HubConnectionState.Connected;
+    
+}
