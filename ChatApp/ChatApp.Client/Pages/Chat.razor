@@ -1,58 +1,229 @@
-﻿@page "/chat"
+﻿@page "/"
 @inject NavigationManager NavigationManager
+@using Microsoft.AspNetCore.SignalR.Client
+
+
 @rendermode InteractiveWebAssembly
-<h3>Chat</h3>
 
-@if (IsConnected)
-{
-    <div class="container">
-        <div class="row justify-content-center">
-            <div class="col-md-6">
-                <input class="form-control mt-3" type="text" placeholder="User" @bind="userInput" />
-                <input class="form-control mt-3" type="text" placeholder="Message" @bind="messageInput" />
-                <div class="d-flex justify-content-center mt-3">
-                    <button class="btn btn-primary btn-block" @onclick="Send">Send</button>
+<div class="container-fluid">
+    <div class="row">
+        <!-- Sidebar for room selection -->
+        <div class="col-lg-3 bg-light sidebar d-flex flex-column justify-content-center align-items-center" style="height:100%;">
+            <h4 class="text-center mt-3">Rooms</h4>
+            <div class="list-group d-flex flex-column align-items-center">
+                <button type="button" class="list-group-item list-group-item-action" @onclick="() => LeaveRoomAndReturnToGeneral()">General</button>
+                @foreach (var room in rooms)
+                {
+                    <button type="button" class="list-group-item list-group-item-action m-1" @onclick="() => ChangeRoom(room)">@room</button>
+                }
+            </div>
+            <div class="d-flex justify-content-center align-items-center" style="width: 100%;">
+                <button type="button" class="btn btn-success m-4 rounded-circle" style="width: 50px; height: 50px;" @onclick="CreateRoom">
+                    +
+                </button>
+                <button type="button" class="btn btn-danger m-4 rounded-circle" style="width: 50px; height: 50px;" @onclick="RemoveRoom">
+                    -
+                </button>
+            </div>
+        </div>
+
+        <!-- Main content area for messages and input -->
+        <div class="col-lg-9 d-flex flex-column">
+            <div class="d-flex flex-column h-100">
+                <div style="width:30%;
+                            display: flex;
+                            justify-content: center;
+                            flex-direction: column;
+                            align-items: center;">
+                    <!-- Button trigger modal -->
+                    <button id="usernameBtn" type="button" class="btn btn-primary mb-1" data-toggle="modal" data-target="#exampleModalCenter">
+                        UserName
+                    </button>
+
+                    @User
                 </div>
-
-                <ul class="list-group mt-3 d-flex flex-column-reverse">
+                <!-- Chat header -->
+                <h3 class="text-center mt-3">@selectedRoom</h3>
+                <!-- Message list -->
+                <div class=" flex-grow-1 overflow-auto chat-container" style="max-height: 270px;">
                     @foreach (var message in messages)
                     {
-                        <li class="list-group-item">@message</li>
+                        <div style="background: #a1deff;
+                                    text-align: center;
+                                    border-radius: 10px;"
+                             class="m-1 message">
+                            @message
+                        </div>
                     }
-                </ul>
+                </div>
+            </div>
+            <!-- Fixed input area at the center of the screen -->
+            <div class=" mb-3">
+                <!-- Adjusted position and width -->
+                <div class="custom-width-container">
+                    <form class="input-group mt-3" @onsubmit="@(async () => await Send())">
+                        <input class="form-control message-input" type="text" placeholder="Message" @bind="messageInput" />
+                        <div class="input-group-append">
+                            <button class="btn btn-primary" type="submit">Send</button>
+                        </div>
+                    </form>
+
+                    <!-- Leave room button -->
+                    <button type="button" class="btn btn-danger mt-3" @onclick="LeaveRoomAndReturnToGeneral">Leave Room</button>
+                </div>
             </div>
         </div>
     </div>
-}
-else
-{
-    <span>Connecting...</span>
-}
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="exampleModalCenter" tabindex="-1" role="dialog" aria-labelledby="exampleModalCenterTitle" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="exampleModalLongTitle">Register User NAme</h5>
+                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-1">Please Input You User Name</p>
+                <input class="form-control user-input mb-3" type="text" placeholder="User" @bind="userInput" @onkeypress="@(e => { if (e.Key == "Enter") Send(); })" />
+                
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div> 
+              
+
 
 @code {
-    private HubConnection hubconnection;
+    private HubConnection hubConnection;
     private List<string> messages = new List<string>();
     private string userInput;
     private string messageInput;
+    private string selectedRoom = "General";
+    private List<string> rooms = new List<string>(); // Initialize with default rooms
+
+    private string User => $"User Name: {userInput}";
 
     protected override async Task OnInitializedAsync()
     {
-        hubconnection = new HubConnectionBuilder()
+        hubConnection = new HubConnectionBuilder()
             .WithUrl(NavigationManager.ToAbsoluteUri("/chatHub"))
             .Build();
 
-        hubconnection.On<string, string>("ReceiveMessage", (user, message) =>
+        hubConnection.On<string, string>("ReceiveMessage", (user, message) =>
         {
             var formattedMessage = $"{user}: {message}";
+            Console.WriteLine($"Received message: {formattedMessage}"); // Log the received message
             messages.Add(formattedMessage);
             StateHasChanged();
         });
 
-        await hubconnection.StartAsync();
+        await ConnectToHub();
+        await JoinRoom(selectedRoom);
     }
 
-    Task Send() => hubconnection.SendAsync("SendMessage", userInput, messageInput);
+    private async Task ConnectToHub()
+    {
+        try
+        {
+            await hubConnection.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error connecting to hub: {ex.Message}");
+        }
+    }
 
-    public bool IsConnected => hubconnection.State == HubConnectionState.Connected;
-    
+    private async Task Send()
+    {
+        if (string.IsNullOrWhiteSpace(messageInput))
+        {
+            return;
+        }
+
+        try
+        {
+            await hubConnection.SendAsync("SendMessage", userInput, messageInput, selectedRoom);
+            messageInput = ""; // Clear message input after sending
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error sending message: {ex.Message}");
+        }
+    }
+
+
+    public bool IsConnected => hubConnection.State == HubConnectionState.Connected;
+
+    private async Task JoinRoom(string room)
+    {
+        await hubConnection.InvokeAsync("JoinRoom", room);
+    }
+
+    private async Task LeaveRoom(string room)
+    {
+        await hubConnection.InvokeAsync("LeaveRoom", room);
+    }
+
+    private async Task ChangeRoom(string room)
+    {
+        if (room != selectedRoom)
+        {
+            await LeaveRoom(selectedRoom);
+            selectedRoom = room;
+            messages.Clear(); // Clear messages when changing rooms
+            await JoinRoom(selectedRoom);
+            StateHasChanged(); // Force page re-render after room change
+        }
+    }
+
+    private async Task LeaveRoomAndReturnToGeneral()
+    {
+        await LeaveRoom(selectedRoom);
+        selectedRoom = "General"; // Return to the general room
+        messages.Clear(); // Clear messages when leaving the room
+        await JoinRoom(selectedRoom);
+        StateHasChanged(); // Force page re-render after room change
+    }
+
+    private int i = 1;
+
+    private async Task CreateRoom()
+    {
+        var newRoom = $"Room {i++}"; // You can replace this with logic to get the new room name
+        rooms.Add(newRoom);
+        await JoinRoom(newRoom);
+        selectedRoom = newRoom;
+        messages.Clear(); // Clear messages when joining a new room
+        StateHasChanged();
+    }
+
+    private async Task RemoveRoom()
+    {
+        if (rooms.Count > 0)
+        {
+            var lastRoom = rooms.Last();
+            await LeaveRoom(lastRoom);
+            i--; // Decrement the room counter
+            rooms.Remove(lastRoom);
+            if (selectedRoom == lastRoom)
+            {
+                selectedRoom = "General"; // Return to the general room if the removed room was the selected room
+                await JoinRoom(selectedRoom);
+                messages.Clear(); // Clear messages when leaving the room
+            }
+            StateHasChanged(); // Force page re-render after room removal
+        }
+    }
+
+   
+
+
+   
 }
