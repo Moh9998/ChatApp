@@ -2,7 +2,6 @@
 @inject NavigationManager NavigationManager
 @using Microsoft.AspNetCore.SignalR.Client
 
-
 @rendermode InteractiveWebAssembly
 
 <div class="container-fluid">
@@ -81,24 +80,22 @@
     <div class="modal-dialog modal-dialog-centered" role="document">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="exampleModalLongTitle">Register User NAme</h5>
-                <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                <h5 class="modal-title" id="exampleModalLongTitle">Register User Name</h5>
+                <button type="button" class="close btn btn-danger" data-dismiss="modal" aria-label="Close">
                     <span aria-hidden="true">&times;</span>
                 </button>
             </div>
             <div class="modal-body">
                 <p class="mb-1">Please Input You User Name</p>
                 <input class="form-control user-input mb-3" type="text" placeholder="User" @bind="userInput" @onkeypress="@(e => { if (e.Key == "Enter") Send(); })" />
-                
+
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-info text-light" data-dismiss="modal">Register</button>
             </div>
         </div>
     </div>
-</div> 
-              
-
+</div>
 
 @code {
     private HubConnection hubConnection;
@@ -116,12 +113,12 @@
             .WithUrl(NavigationManager.ToAbsoluteUri("/chatHub"))
             .Build();
 
-        hubConnection.On<string, string>("ReceiveMessage", (user, message) =>
+        hubConnection.On<string, string>("ReceiveMessage", async (user, message) =>
         {
             var formattedMessage = $"{user}: {message}";
             Console.WriteLine($"Received message: {formattedMessage}"); // Log the received message
             messages.Add(formattedMessage);
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged); // Use InvokeAsync to update the UI safely
         });
 
         await ConnectToHub();
@@ -158,7 +155,6 @@
         }
     }
 
-
     public bool IsConnected => hubConnection.State == HubConnectionState.Connected;
 
     private async Task JoinRoom(string room)
@@ -179,7 +175,7 @@
             selectedRoom = room;
             messages.Clear(); // Clear messages when changing rooms
             await JoinRoom(selectedRoom);
-            StateHasChanged(); // Force page re-render after room change
+            await InvokeAsync(StateHasChanged); // Force page re-render after room change
         }
     }
 
@@ -189,7 +185,7 @@
         selectedRoom = "General"; // Return to the general room
         messages.Clear(); // Clear messages when leaving the room
         await JoinRoom(selectedRoom);
-        StateHasChanged(); // Force page re-render after room change
+        await InvokeAsync(StateHasChanged); // Force page re-render after room change
     }
 
     private int i = 1;
@@ -201,7 +197,7 @@
         await JoinRoom(newRoom);
         selectedRoom = newRoom;
         messages.Clear(); // Clear messages when joining a new room
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task RemoveRoom()
@@ -218,12 +214,7 @@
                 await JoinRoom(selectedRoom);
                 messages.Clear(); // Clear messages when leaving the room
             }
-            StateHasChanged(); // Force page re-render after room removal
+            await InvokeAsync(StateHasChanged); // Force page re-render after room removal
         }
     }
-
-   
-
-
-   
 }
